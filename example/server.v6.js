@@ -1,18 +1,17 @@
-const fs = require('fs');
 const express = require('express');
-const bodyParser = require('body-parser');
-
 const app = express();
+const bodyParser = require('body-parser');
 app.use(bodyParser.json());
 
 const db = require('./db');
 const sql = db.sql();
 const conn = db.initConn(sql);
 
+const fs = require('fs');
 const https = require('https');
 const privateKey = fs.readFileSync('./server.key', 'utf8');
 const certificate = fs.readFileSync('./server.cert', 'utf8');
-const credentials = { key: privateKey, cert: certificate };
+const credentials = {key: privateKey, cert: certificate};
 
 const crypto = require('crypto');
 const getFuncSHA512Salt = (salt) => {
@@ -24,6 +23,9 @@ const getFuncSHA512Salt = (salt) => {
     }
 };
 const cryptoSHA512Salt = getFuncSHA512Salt("HVHSNrRWpP1ZSR4bnjXpiHCS1ENYcUuHO")
+
+db.deleteUser(conn, 'v6');
+db.createUser(conn, 'v6', cryptoSHA512Salt("whatthefoxsay"));
 
 app.post('/api/v1/login', (req, res) => {
     conn.all(`
@@ -46,7 +48,7 @@ app.post('/api/v1/login', (req, res) => {
                 res.send(loginFlag ? 'logged in' : 'bad news');
             }
         })
-})
+});
 
 const httpsServer = https.createServer(credentials, app);
 httpsServer.listen(3030);

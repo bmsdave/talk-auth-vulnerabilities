@@ -1,13 +1,14 @@
-// tcpdump, wireshark
-
 const express = require('express');
 const app = express();
 const bodyParser = require('body-parser');
 app.use(bodyParser.json());
 
-const db = require('./db')
+const db = require('./db');
 const sql = db.sql();
 const conn = db.initConn(sql);
+
+db.deleteUser('v1');
+db.createUser('v1', '123456');
 
 app.get('/api/v1/login', (req, res) => {
     conn.all(`
@@ -30,8 +31,8 @@ app.get('/api/v1/login', (req, res) => {
                 res.send(loginFlag ? 'logged in' : 'bad news');
             }
         })
-})
+});
 
 app.listen(3030, () => {
     console.log("start");
-})
+});

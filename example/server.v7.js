@@ -1,61 +1,24 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const sql = require("sqlite3").verbose();
-const bcrypt = require('bcrypt');
-
-const initConn = (sqlite3) => {
-    const conn = new sqlite3.Database('db/users.db', (err) => {
-        if (err) {
-            console.log('Could not connect to database', err)
-        } else {
-            console.log('Connected to database')
-        }
-    });
-    return conn;
-}
-
-const initTable = (conn) => {
-    conn.serialize(function () {
-        conn.run("CREATE TABLE IF NOT EXISTS users (login TEXT NOT NULL UNIQUE, password TEXT NOT NULL)");
-    });
-}
-
-const deleteUser = (db, login) => {
-    db.serialize(() => {
-        db.run(`DELETE FROM users WHERE login = $login;`, {
-            $login: login
-        })
-    })
-}
-
-const createUser = (db, login, password) => {
-    db.serialize(() => {
-        db.run(`INSERT INTO users (login, password) VALUES ($login, $password);`, {
-            $login: login,
-            $password: password
-        })
-    })
-}
-
-const conn = initConn(sql);
-initTable(conn);
-
-const crypto = require('crypto');
-const getFuncSHA256Salt = (salt) => {
-    return (password) => {
-        var hash = crypto.createHmac('sha256', salt);
-        hash.update(password);
-        var value = hash.digest('hex');
-        return value;
-    }
-};
-const cryptoSHA256Salt = getFuncSHA256Salt("HVHSNrRWpP1ZSR4bnjXpiHCS1ENYcUuHO")
-
-deleteUser(conn, 'v7')
-createUser(conn, 'v7', cryptoSHA256Salt("whatthefoxsay"))
-
 const app = express();
+const bodyParser = require('body-parser');
 app.use(bodyParser.json());
+
+const db = require('./db');
+const sql = db.sql();
+const conn = db.initConn(sql);
+
+const fs = require('fs');
+const https = require('https');
+const privateKey = fs.readFileSync('./server.key', 'utf8');
+const certificate = fs.readFileSync('./server.cert', 'utf8');
+const credentials = {key: privateKey, cert: certificate};
+
+const bcrypt = require('bcrypt');
+bcrypt.hash("whatthefoxsay", 10, function (err, hash) {
+    db.deleteUser(conn, 'v6');
+    // Store secure hash in user record
+    db.createUser(conn, 'v7', hash)
+});
 
 app.post('/api/v1/login', (req, res) => {
     conn.all(`
@@ -69,16 +32,20 @@ app.post('/api/v1/login', (req, res) => {
             if (err) {
                 res.send(err.message);
             } else {
-                let loginFlag = false
                 if (rows && rows.length > 0) {
-                    res.send( (cryptoSHA256Salt(req.body.password) === rows[0].password) ? 'logged in' : 'bad news' )
+                    // compare a provided password input with saved hash
+                    bcrypt.compare(
+                        req.body.password,
+                        rows[0].password,
+                        function (err, match) {
+                            res.send(match ? 'logged in' : 'bad news');
+                        }
+                    );
                 } else {
-                    res.send(loginFlag ? 'logged in' : 'bad news');
+                    res.send('bad news');
                 }
             }
         })
 })
-
-app.listen(3030, () => {
-    console.log('start');
-})
+const httpsServer = https.createServer(credentials, app);
+httpsServer.listen(3030);
